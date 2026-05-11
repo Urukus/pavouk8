@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AZ Kvíz – Turnajový pavouk</title>
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+body{font-family:Arial,sans-serif;background:#eef2f7}
+.section{margin-bottom:40px}
+.bracket{display:flex;gap:24px;overflow:auto;padding-bottom:10px}
+.round{display:flex;flex-direction:column;gap:14px}
+.round-title{background:#0f172a;color:white;font-size:11px;font-weight:bold;text-align:center;padding:5px;border-radius:6px}
+.match{width:170px;background:white;border:1px solid #94a3b8;border-radius:8px;overflow:hidden}
+.player{width:100%;text-align:left;padding:7px 8px;font-size:12px;border-bottom:1px solid #e2e8f0}
+.player:last-child{border-bottom:none}
+.player:hover{background:#e2e8f0}
+.winner{background:#bbf7d0!important;font-weight:bold}
+.auto{background:#fef3c7}
+.student-item{display:flex;align-items:center;gap:8px;padding:4px 0}
+</style>
+</head>
+
+<body class="p-4">
+
+<div class="bg-white rounded-2xl shadow-xl p-5 mb-5">
+
+<h1 class="text-2xl font-black mb-5">🎓 7. třída – AZ Kvíz turnaj</h1>
+
+<div class="grid lg:grid-cols-2 gap-6">
+
+<div>
+<div class="text-sm font-black mb-2">📋 Seznam žáků</div>
+
+<textarea
+id="students"
+class="w-full border rounded-xl p-3 text-sm h-72"
+>Bělovský Šimon
+Doubravská Štěpánka
+Hokufová Štěpánka
+Hrníčko Petr
+Hubený Michal
+Jílek Lukáš
+Kalousová Anna
+Kočí Daniel
+Kučerová Liliana
+Lédl Tomáš
+Lorenc Josef
+Nováková Alexandra
+Ondra Jan
+Pospíšil Adam
+Šiklová Marie
+Štěpánková Vanesa
+Štorek Jáchym
+Tvrzická Sofie
+Vamberský Dominik Silvestr
+Vtípil Matěj
+Žiga Tomas</textarea>
+
+<div class="flex gap-3 mt-3">
+<button onclick="loadStudents()"
+class="bg-slate-700 text-white px-4 py-2 rounded-xl font-bold text-sm">
+Načíst seznam
+</button>
+
+<button onclick="copyStudents()"
+class="bg-slate-200 px-4 py-2 rounded-xl font-bold text-sm">
+Kopírovat
+</button>
+</div>
+
+</div>
+
+<div>
+
+<div class="text-sm font-black mb-2">✅ Přítomní žáci</div>
+
+<div
+id="studentChecklist"
+class="border rounded-xl p-3 bg-slate-50 h-72 overflow-auto text-sm">
+</div>
+
+<div class="mt-4">
+<button onclick="generateTournament()"
+class="bg-slate-900 text-white px-5 py-3 rounded-xl font-black">
+🎲 Vylosovat turnaj
+</button>
+</div>
+
+</div>
+
+</div>
+
+</div>
+
+<div class="grid xl:grid-cols-[1fr_280px] gap-4">
+
+<div class="bg-slate-100 rounded-xl p-4 overflow-auto">
+
+<div class="section">
+<h2 class="font-black text-lg mb-2">🏆 Hlavní pavouk</h2>
+<div id="main" class="bracket"></div>
+</div>
+
+<div class="section">
+<h2 class="font-black text-lg mb-2">🔁 Opravný pavouk</h2>
+<div id="losers" class="bracket"></div>
+</div>
+
+<div class="section">
+<h2 class="font-black text-lg mb-2">📍 Pavouk o umístění</h2>
+<div id="placement" class="bracket"></div>
+</div>
+
+</div>
+
+<div class="bg-white rounded-xl border p-4">
+<h2 class="font-black text-lg mb-3">🏅 Konečné pořadí</h2>
+<div id="ranking" class="space-y-2 text-sm"></div>
+</div>
+
+</div>
+
+<script>
+
+let allStudents=[];
+let mainRounds=[];
+let loserRounds=[];
+let placementRounds=[];
+let ranking=[];
+
+function shuffle(arr){
+    for(let i=arr.length-1;i>0;i--){
+        const j=Math.floor(Math.random()*(i+1));
+        [arr[i],arr[j]]=[arr[j],arr[i]];
+    }
+    return arr;
+}
+
+function nextPowerOfTwo(n){
+    return Math.pow(2, Math.ceil(Math.log2(n)));
+}
+
+function loadStudents(){
+
+    const raw=document.getElementById("students").value;
+
+    allStudents=raw
+    .split("\n")
+    .map(s=>s.trim())
+    .filter(s=>s.length>0);
+
+    const checklist=document.getElementById("studentChecklist");
+
+    checklist.innerHTML=allStudents.map((student,index)=>`
+        <label class="student-item">
+            <input type="checkbox" checked id="student_${index}">
+            <span>${student}</span>
+        </label>
+    `).join("");
+}
+
+function copyStudents(){
+    const textarea=document.getElementById("students");
+    textarea.select();
+    textarea.setSelectionRange(0,99999);
+    navigator.clipboard.writeText(textarea.value);
+}
+
+function createRound(players){
+
+    let matches=[];
+
+    for(let i=0;i<players.length;i+=2){
+        matches.push({
+            p1:players[i]||"",
+            p2:players[i+1]||"",
+            winner:""
+        });
+    }
+
+    return matches;
+}
+
+function autoAdvance(rounds){
+
+    rounds.forEach((round,roundIndex)=>{
+
+        round.forEach((match,matchIndex)=>{
+
+            if(match.winner) return;
+
+            if(match.p1 && !match.p2){
+
+                match.winner=match.p1;
+
+                if(rounds[roundIndex+1]){
+
+                    const next=Math.floor(matchIndex/2);
+
+                    if(matchIndex%2===0){
+                        rounds[roundIndex+1][next].p1=match.p1;
+                    } else {
+                        rounds[roundIndex+1][next].p2=match.p1;
+                    }
+                }
+            }
+
+        });
+
+    });
+}
+
+function generateTournament(){
+
+    let players=[];
+
+    allStudents.forEach((student,index)=>{
+
+        const checkbox=document.getElementById(`student_${index}`);
+
+        if(checkbox && checkbox.checked){
+            players.push(student);
+        }
+
+    });
+
+    shuffle(players);
+
+    const size=nextPowerOfTwo(players.length);
+
+    while(players.length<size){
+        players.push("");
+    }
+
+    mainRounds=[];
+    loserRounds=[];
+    placementRounds=[];
+    ranking=[];
+
+    let current=[...players];
+
+    while(current.length>1){
+        mainRounds.push(createRound(current));
+        current=new Array(Math.ceil(current.length/2)).fill("");
+    }
+
+    for(let i=0;i<mainRounds.length;i++){
+        loserRounds.push(createRound(new Array(mainRounds[i].length*2).fill("")));
+        placementRounds.push(createRound(new Array(mainRounds[i].length*2).fill("")));
+    }
+
+    autoAdvance(mainRounds);
+
+    renderAll();
+}
+
+function addPlayerToRound(rounds,roundIndex,player){
+
+    if(!rounds[roundIndex]) return;
+
+    for(let match of rounds[roundIndex]){
+
+        if(!match.p1){
+            match.p1=player;
+            return;
+        }
+
+        if(!match.p2){
+            match.p2=player;
+            return;
+        }
+    }
+}
+
+function selectWinner(rounds,nextRounds,target,roundIndex,matchIndex,slot){
+
+    const match=rounds[roundIndex][matchIndex];
+
+    const winner=slot===1 ? match.p1 : match.p2;
+    const loser=slot===1 ? match.p2 : match.p1;
+
+    if(!winner) return;
+
+    match.winner=winner;
+
+    if(nextRounds[roundIndex+1]){
+
+        const next=Math.floor(matchIndex/2);
+
+        if(matchIndex%2===0){
+            nextRounds[roundIndex+1][next].p1=winner;
+        } else {
+            nextRounds[roundIndex+1][next].p2=winner;
+        }
+
+        autoAdvance(nextRounds);
+
+    } else {
+
+        if(!ranking.includes(winner)){
+            ranking.unshift(winner);
+        }
+    }
+
+    if(loser && target){
+        addPlayerToRound(target,roundIndex,loser);
+    }
+
+    renderAll();
+}
+
+function renderBracket(rounds,id,type){
+
+    let html='';
+
+    rounds.forEach((round,roundIndex)=>{
+
+        html+=`<div class="round">
+        <div class="round-title">
+        ${roundIndex===0?'1. kolo':
+        roundIndex===1?'Čtvrtfinále':
+        roundIndex===2?'Semifinále':'Finále'}
+        </div>`;
+
+        round.forEach((match,matchIndex)=>{
+
+            let click1="";
+            let click2="";
+
+            if(type==="main"){
+                click1=`selectWinner(mainRounds,mainRounds,loserRounds,${roundIndex},${matchIndex},1)`;
+                click2=`selectWinner(mainRounds,mainRounds,loserRounds,${roundIndex},${matchIndex},2)`;
+            }
+
+            if(type==="losers"){
+                click1=`selectWinner(loserRounds,loserRounds,placementRounds,${roundIndex},${matchIndex},1)`;
+                click2=`selectWinner(loserRounds,loserRounds,placementRounds,${roundIndex},${matchIndex},2)`;
+            }
+
+            if(type==="placement"){
+                click1=`selectWinner(placementRounds,placementRounds,null,${roundIndex},${matchIndex},1)`;
+                click2=`selectWinner(placementRounds,placementRounds,null,${roundIndex},${matchIndex},2)`;
+            }
+
+            html+=`
+            <div class="match">
+
+            <button onclick="${click1}"
+            class="player ${match.winner===match.p1?'winner':''} ${match.p1&&!match.p2?'auto':''}">
+            ${match.p1||'---'}
+            </button>
+
+            <button onclick="${click2}"
+            class="player ${match.winner===match.p2?'winner':''}">
+            ${match.p2||'---'}
+            </button>
+
+            </div>`;
+        });
+
+        html+='</div>';
+    });
+
+    document.getElementById(id).innerHTML=html;
+}
+
+function renderRanking(){
+    document.getElementById("ranking").innerHTML=
+    ranking.map((player,index)=>`
+    <div class="flex justify-between border rounded px-3 py-2 bg-slate-50">
+    <div class="font-bold">${index+1}.</div>
+    <div>${player}</div>
+    </div>`).join("");
+}
+
+function renderAll(){
+    renderBracket(mainRounds,"main","main");
+    renderBracket(loserRounds,"losers","losers");
+    renderBracket(placementRounds,"placement","placement");
+    renderRanking();
+}
+
+loadStudents();
+
+</script>
+
+</body>
+</html>
